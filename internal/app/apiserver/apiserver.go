@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/KapitanD/http-api-server/internal/app/store/sqlstore"
+	"github.com/gorilla/sessions"
 )
 
 // Start ...
@@ -16,7 +17,10 @@ func Start(config *Config) error {
 
 	defer db.Close()
 	store := sqlstore.New(db)
-	srv := newServer(store)
+	sessionStore := sessions.NewCookieStore([]byte(config.SessionKey))
+	srv := newServer(store, sessionStore)
+
+	srv.logger.Info("starting server")
 
 	return http.ListenAndServe(config.BindAddr, srv)
 }
