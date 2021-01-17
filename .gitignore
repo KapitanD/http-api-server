@@ -3,3 +3,4 @@ apiserver
 !cmd/apiserver
 !internal/app/apiserver
 cookie.txt
+.vscode/

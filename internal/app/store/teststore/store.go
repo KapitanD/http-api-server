@@ -8,6 +8,7 @@ import (
 // Store ...
 type Store struct {
 	userRepository *UserRepository
+	noteRepository *NoteRepository
 }
 
 // New ...
@@ -27,4 +28,18 @@ func (s *Store) User() store.UserRepository {
 	}
 
 	return s.userRepository
+}
+
+// Notes ...
+func (s *Store) Notes() store.NoteRepository {
+	if s.noteRepository != nil {
+		return s.noteRepository
+	}
+
+	s.noteRepository = &NoteRepository{
+		store: s,
+		notes: make(map[int]*model.Note),
+	}
+
+	return s.noteRepository
 }
