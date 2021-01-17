@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/KapitanD/http-api-server/internal/app/model"
@@ -25,6 +26,7 @@ const (
 var (
 	errIncorrectEmailOrPassword = errors.New("incorrect email or password")
 	errNotAuthenticated         = errors.New("not authenticated")
+	errIncorrectRequest         = errors.New("incorrect request")
 )
 
 type ctxKey int8
@@ -63,6 +65,14 @@ func (s *server) configureRouter() {
 	private := s.router.PathPrefix("/private").Subrouter()
 	private.Use(s.authenticateUser)
 	private.HandleFunc("/whoami", s.handleWhoami()).Methods("GET")
+
+	notes := s.router.PathPrefix("/notes").Subrouter()
+	notes.Use(s.authenticateUser)
+	notes.HandleFunc("/", s.handleNotesCreate()).Methods("POST")
+	notes.HandleFunc("/{id:[0-9]+}", s.handleNotesUpdate()).Methods("PATCH")
+	notes.HandleFunc("/{id:[0-9]+}", s.handleNotesDelete()).Methods("DELETE")
+	notes.HandleFunc("/", s.handleNotesGetAll()).Methods("GET")
+	notes.HandleFunc("/{id:[0-9]+}", s.handleNotesGet()).Methods("GET")
 }
 
 func (s *server) setRequestID(next http.Handler) http.Handler {
@@ -194,6 +204,158 @@ func (s *server) handleSessionCreate() http.HandlerFunc {
 		}
 
 		s.respond(w, r, http.StatusOK, nil)
+	}
+}
+
+func (s *server) handleNotesCreate() http.HandlerFunc {
+	type request struct {
+		Header string `json:"header"`
+		Body   string `json:"body"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := r.Context().Value(ctxKeyUser).(*model.User)
+
+		req := &request{}
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+
+		n := &model.Note{
+			Header:    req.Header,
+			Body:      req.Body,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		if err := s.store.Notes().Create(n, u); err != nil {
+			s.error(w, r, http.StatusUnprocessableEntity, err)
+			return
+		}
+
+		s.respond(w, r, http.StatusCreated, n)
+	}
+}
+
+func (s *server) handleNotesUpdate() http.HandlerFunc {
+
+	type request struct {
+		Header string `json:"header"`
+		Body   string `json:"body"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		tmp, ok := mux.Vars(r)["id"]
+		if !ok {
+			s.error(w, r, http.StatusBadRequest, errIncorrectRequest)
+			return
+		}
+		id, err := strconv.Atoi(tmp)
+		if err != nil {
+			s.error(w, r, http.StatusInternalServerError, err)
+			return
+		}
+
+		u := r.Context().Value(ctxKeyUser).(*model.User)
+
+		req := &request{}
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+
+		n, err := s.store.Notes().FindByID(id)
+		if err != nil {
+			s.error(w, r, http.StatusNotFound, store.ErrRecordNotFound)
+			return
+		}
+		if n.AuthorID != u.ID {
+			s.error(w, r, http.StatusNotFound, store.ErrRecordNotFound)
+			return
+		}
+
+		un := &model.Note{
+			Header:    req.Header,
+			Body:      req.Body,
+			UpdatedAt: time.Now(),
+		}
+
+		if err := s.store.Notes().Update(id, un); err != nil {
+			s.error(w, r, http.StatusUnprocessableEntity, err)
+			return
+		}
+
+		s.respond(w, r, http.StatusOK, nil)
+	}
+}
+
+func (s *server) handleNotesDelete() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tmp, ok := mux.Vars(r)["id"]
+		if !ok {
+			s.error(w, r, http.StatusBadRequest, errIncorrectRequest)
+			return
+		}
+		id, err := strconv.Atoi(tmp)
+		if err != nil {
+			s.error(w, r, http.StatusInternalServerError, err)
+			return
+		}
+
+		u := r.Context().Value(ctxKeyUser).(*model.User)
+
+		n, err := s.store.Notes().FindByID(id)
+		if err != nil {
+			s.respond(w, r, http.StatusOK, nil)
+			return
+		}
+
+		if n.AuthorID != u.ID {
+			s.respond(w, r, http.StatusOK, nil)
+			return
+		}
+
+		if err := s.store.Notes().Delete(id); err != nil {
+			s.error(w, r, http.StatusUnprocessableEntity, err)
+			return
+		}
+
+		s.respond(w, r, http.StatusOK, nil)
+	}
+}
+
+func (s *server) handleNotesGetAll() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := r.Context().Value(ctxKeyUser).(*model.User)
+
+		nl, err := s.store.Notes().FindByUser(u)
+		if err != nil {
+			s.error(w, r, http.StatusInternalServerError, err)
+		}
+		s.respond(w, r, http.StatusOK, nl)
+	}
+}
+
+func (s *server) handleNotesGet() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tmp, ok := mux.Vars(r)["id"]
+		if !ok {
+			s.error(w, r, http.StatusBadRequest, errIncorrectRequest)
+			return
+		}
+		id, err := strconv.Atoi(tmp)
+		if err != nil {
+			s.error(w, r, http.StatusInternalServerError, err)
+			return
+		}
+		u := r.Context().Value(ctxKeyUser).(*model.User)
+
+		n, err := s.store.Notes().FindByID(id)
+		if err != nil || n.AuthorID != u.ID {
+			s.error(w, r, http.StatusNotFound, store.ErrRecordNotFound)
+		}
+		s.respond(w, r, http.StatusOK, n)
 	}
 }
 

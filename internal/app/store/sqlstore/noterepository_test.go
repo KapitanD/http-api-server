@@ -29,10 +29,12 @@ func TestNoteRepository_Update(t *testing.T) {
 	u := model.TestUser(t)
 	n := model.TestNote(t)
 	s.User().Create(u)
-	s.Notes().Create(n, u)
 	un := model.TestNote(t)
 	un.Header = "some"
 	un.Body = "changes"
+
+	assert.Error(t, s.Notes().Update(n.ID, un))
+	s.Notes().Create(n, u)
 
 	assert.NoError(t, s.Notes().Update(n.ID, un))
 	assert.NotNil(t, n)

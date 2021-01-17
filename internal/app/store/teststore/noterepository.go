@@ -29,15 +29,19 @@ func (r *NoteRepository) Create(n *model.Note, u *model.User) error {
 
 // Update ...
 func (r *NoteRepository) Update(id int, un *model.Note) error {
-	if err := un.Validate(); err != nil {
+	if err := un.ValidateUpdate(); err != nil {
 		return err
 	}
 	n, ok := r.notes[id]
 	if !ok {
 		return store.ErrRecordNotFound
 	}
-	n.Body = un.Body
-	n.Header = un.Header
+	if un.Body != "" {
+		n.Body = un.Body
+	}
+	if un.Header != "" {
+		n.Header = un.Header
+	}
 	n.UpdatedAt = time.Now()
 	return nil
 }

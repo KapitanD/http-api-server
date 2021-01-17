@@ -33,16 +33,26 @@ func (r *NoteRepository) Create(n *model.Note, u *model.User) error {
 
 // Update ...
 func (r *NoteRepository) Update(id int, un *model.Note) error {
-	if err := un.Validate(); err != nil {
+	if err := un.ValidateUpdate(); err != nil {
 		return err
 	}
 
-	un.UpdatedAt = time.Now()
+	n, err := r.FindByID(id)
+	if err != nil {
+		return err
+	}
+	if un.Body != "" {
+		n.Body = un.Body
+	}
+	if un.Header != "" {
+		n.Header = un.Header
+	}
+	n.UpdatedAt = time.Now()
 	return r.store.db.QueryRow(
 		"UPDATE notes SET header=$1, body=$2, updated_at=$3 WHERE id=$4 RETURNING id;",
-		un.Header,
-		un.Body,
-		un.UpdatedAt,
+		n.Header,
+		n.Body,
+		n.UpdatedAt,
 		id,
 	).Scan(&id)
 }

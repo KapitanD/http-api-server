@@ -24,3 +24,12 @@ func (n *Note) Validate() error {
 		validation.Field(&n.Body, validation.Required, validation.Length(1, 1000)),
 	)
 }
+
+// ValidateUpdate ...
+func (n *Note) ValidateUpdate() error {
+	return validation.ValidateStruct(
+		n,
+		validation.Field(&n.Header, validation.Length(0, 100)),
+		validation.Field(&n.Body, validation.Length(0, 1000)),
+	)
+}
