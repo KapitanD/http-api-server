@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: http-api-server
+  name: http-api-server-deployment
+  labels:
+    app: http-api-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: http-api-server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 50%
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: http-api-server
+    spec:
+      containers:
+      - name: http-api-server
+        image: docker.io/kapitand/apiserver:0.0.2
+        imagePullPolicy: Always
+        env:
+          - name: POSTGRES_DB
+            valueFrom:
+              secretKeyRef:
+                name: http-api-server-secret
+                key: POSTGRES_DB
+          - name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: http-api-server-secret
+                key: POSTGRES_USER
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: http-api-server-secret
+                key: POSTGRES_PASSWORD
+          - name: DB_LOCAL
+            valueFrom:
+              configMapKeyRef:
+                name: http-api-server-configmap
+                key: dblocal
+        ports:
+        - containerPort: 8444
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8444
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8444
+        resources:
+          limits:
+            cpu: 10m
+            memory: 30Mi
+          requests:
+            cpu: 10m
+            memory: 30Mi
+      terminationGracePeriodSeconds: 30

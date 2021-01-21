@@ -1,0 +1,8 @@
+FROM busybox
+
+ENV PORT 8090
+EXPOSE $PORT
+
+COPY apiserver /
+COPY ./configs /configs
+CMD ["/apiserver"]

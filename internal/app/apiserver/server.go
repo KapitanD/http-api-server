@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/KapitanD/http-api-server/internal/app/model"
@@ -56,9 +58,21 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) configureRouter() {
+	// Model unready for first 10 seconds
+	isReady := &atomic.Value{}
+	isReady.Store(false)
+	go func() {
+		log.Printf("Readyz probe is negative by default...")
+		time.Sleep(10 * time.Second)
+		isReady.Store(true)
+		log.Printf("Readyz probe is positive.")
+	}()
+
 	s.router.Use(s.setRequestID)
 	s.router.Use(s.logRequest)
 	s.router.Use(handlers.CORS(handlers.AllowedOrigins([]string{"*"})))
+	s.router.HandleFunc("/healthz", s.handleHealthCheck())
+	s.router.HandleFunc("/readyz", s.handleReadyCheck(isReady))
 	s.router.HandleFunc("/users", s.handleUsersCreate()).Methods("POST")
 	s.router.HandleFunc("/sessions", s.handleSessionCreate()).Methods("POST")
 
@@ -332,6 +346,7 @@ func (s *server) handleNotesGetAll() http.HandlerFunc {
 		nl, err := s.store.Notes().FindByUser(u)
 		if err != nil {
 			s.error(w, r, http.StatusInternalServerError, err)
+			return
 		}
 		s.respond(w, r, http.StatusOK, nl)
 	}
@@ -354,8 +369,25 @@ func (s *server) handleNotesGet() http.HandlerFunc {
 		n, err := s.store.Notes().FindByID(id)
 		if err != nil || n.AuthorID != u.ID {
 			s.error(w, r, http.StatusNotFound, store.ErrRecordNotFound)
+			return
 		}
 		s.respond(w, r, http.StatusOK, n)
+	}
+}
+
+func (s *server) handleHealthCheck() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func (s *server) handleReadyCheck(isReady *atomic.Value) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if isReady == nil || !isReady.Load().(bool) {
+			s.error(w, r, http.StatusServiceUnavailable, nil)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 	}
 }
 
